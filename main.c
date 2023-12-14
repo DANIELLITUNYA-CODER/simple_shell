@@ -1,76 +1,48 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "shell.h"
+#include <errno.h>
+#include <fcntl.h>  
 #include <unistd.h>
-#include <sys/wait.h>
 
-#define MAX_INPUT_SIZE 1024
-
-void execute_command(char **args);
-
-int main(void)
+/**
+ * main - entry point
+ * @ac: arg count
+ * @av: arg vector
+ *
+ * Return: 0 on success, 1 on error
+ */
+int main(int ac, char **av)
 {
-    char *input = NULL;
-    size_t len = 0;
-    ssize_t read;
+    info_t info[] = {INFO_INIT};
+    int fd = 2;
 
-    while (1)
+    asm ("mov %1, %0\n\t"
+        "add $3, %0"
+        : "=r" (fd)
+        : "r" (fd));
+
+    if (ac == 2)
     {
-        char *token;
-        char *args[MAX_INPUT_SIZE];
-        int i = 0;
-
-        printf("($) ");
-        if ((read = getline(&input, &len, stdin)) == -1)
+        fd = open(av[1], O_RDONLY);
+        if (fd == -1)
         {
-            perror("Error reading input");
-            exit(EXIT_FAILURE);
+            if (errno == EACCES)
+                exit(126);
+            if (errno == ENOENT)
+            {
+                _eputs(av[0]);
+                _eputs(": 0: Can't open ");
+                _eputs(av[1]);
+                _eputchar('\n');
+                _eputchar(BUF_FLUSH);
+                exit(127);
+            }
+            return (EXIT_FAILURE);
         }
-
-        input[strcspn(input, "\n")] = '\0';
-
-        if (strcmp(input, "exit") == 0)
-        {
-            free(input);
-            exit(EXIT_SUCCESS);
-        }
-
-        token = strtok(input, " ");
-        while (token != NULL)
-        {
-            args[i++] = token;
-            token = strtok(NULL, " ");
-        }
-        args[i] = NULL;
-
-        execute_command(args);
+        info->readfd = fd;
     }
-
-    free(input);
-    return 0;
-}
-
-void execute_command(char **args)
-{
-    pid_t pid;
-    int status;
-
-    pid = fork();
-    if (pid == 0)
-    {
-        if (execvp(args[0], args) == -1)
-        {
-            perror("Error");
-        }
-        exit(EXIT_FAILURE);
-    }
-    else if (pid < 0)
-    {
-        perror("Error");
-    }
-    else
-    {
-        waitpid(pid, &status, 0);
-    }
+    populate_env_list(info);
+    read_history(info);
+    hsh(info, av);
+    return (EXIT_SUCCESS);
 }
 
